@@ -7,7 +7,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
   // Connection testing
   {
     name: 'autotask_test_connection',
-    description: 'Test the connection to Autotask API',
+    description: 'Test Autotask API connection',
     inputSchema: {
       type: 'object',
       properties: {},
@@ -18,26 +18,26 @@ export const TOOL_DEFINITIONS: McpTool[] = [
   // Company tools
   {
     name: 'autotask_search_companies',
-    description: 'Search for companies in Autotask. Returns 25 results per page by default. Use page parameter for more results.',
+    description: 'Search companies by name or status. Max 200/page.',
     inputSchema: {
       type: 'object',
       properties: {
         searchTerm: {
           type: 'string',
-          description: 'Search term for company name'
+          
         },
         isActive: {
           type: 'boolean',
-          description: 'Filter by active status'
+          
         },
         page: {
           type: 'number',
-          description: 'Page number for pagination (default: 1)',
+          
           minimum: 1
         },
         pageSize: {
           type: 'number',
-          description: 'Results per page (default: 25, max: 200)',
+          description: 'Max 200',
           minimum: 1,
           maximum: 200
         }
@@ -47,45 +47,45 @@ export const TOOL_DEFINITIONS: McpTool[] = [
   },
   {
     name: 'autotask_create_company',
-    description: 'Create a new company in Autotask',
+    description: 'Create new company record',
     inputSchema: {
       type: 'object',
       properties: {
         companyName: {
           type: 'string',
-          description: 'Company name'
+          
         },
         companyType: {
           type: 'number',
-          description: 'Company type ID'
+          
         },
         phone: {
           type: 'string',
-          description: 'Company phone number'
+          
         },
         address1: {
           type: 'string',
-          description: 'Company address line 1'
+          
         },
         city: {
           type: 'string',
-          description: 'Company city'
+          
         },
         state: {
           type: 'string',
-          description: 'Company state/province'
+          
         },
         postalCode: {
           type: 'string',
-          description: 'Company postal/ZIP code'
+          
         },
         ownerResourceID: {
           type: 'number',
-          description: 'Owner resource ID'
+          
         },
         isActive: {
           type: 'boolean',
-          description: 'Whether the company is active'
+          
         }
       },
       required: ['companyName', 'companyType']
@@ -93,58 +93,58 @@ export const TOOL_DEFINITIONS: McpTool[] = [
   },
   {
     name: 'autotask_update_company',
-    description: 'Update an existing company in Autotask. Field names match the Autotask REST API exactly (camelCase, capital ID suffixes where applicable). Note: Autotask uses invoiceTemplateID for payment terms (e.g. 103=Due on Receipt, 104=NET 30) — there is NO `paymentTerm` field on the Companies entity. Billing address fields (billingAddress1/billToCity/billToState/billToZipCode/billToCountryID/billToAttention/billToAddressToUse) are SEPARATE from the regular address fields (address1/city/state/postalCode/countryID) — set both pairs when needed.',
+    description: 'Update company record. invoiceTemplateID sets payment terms (103=Due on Receipt, 104=NET 30). Billing address fields separate from regular address.',
     inputSchema: {
       type: 'object',
       properties: {
         id: {
           type: 'number',
-          description: 'Company ID to update'
+          
         },
         companyName: {
           type: 'string',
-          description: 'Company name'
+          
         },
         phone: {
           type: 'string',
-          description: 'Company phone number'
+          
         },
         address1: {
           type: 'string',
-          description: 'Company address line 1 (the regular address, distinct from billingAddress1 used for invoices)'
+          description: 'Regular address (distinct from billingAddress1)'
         },
         address2: {
           type: 'string',
-          description: 'Company address line 2'
+          
         },
         city: {
           type: 'string',
-          description: 'Company city'
+          
         },
         state: {
           type: 'string',
-          description: 'Company state/province'
+          
         },
         postalCode: {
           type: 'string',
-          description: 'Company postal/ZIP code'
+          
         },
         countryID: {
           type: 'number',
-          description: 'Country ID (e.g. 237 for United States)'
+          description: 'e.g. 237 for United States'
         },
         isActive: {
           type: 'boolean',
-          description: 'Whether the company is active'
+          
         },
         webAddress: {
           type: 'string',
-          description: 'Company website URL (Autotask field name is webAddress, not website)'
+          description: 'Website URL (field name is webAddress)'
         },
         // ---- Billing-to fields (used for Invoice Settings; SEPARATE from regular address) ----
         billingAddress1: {
           type: 'string',
-          description: 'Billing address line 1 (used for Invoice Settings — separate from address1)'
+          description: 'For invoices (separate from address1)'
         },
         billingAddress2: {
           type: 'string',
@@ -156,7 +156,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
         },
         billToAddressToUse: {
           type: 'number',
-          description: 'Address-to-use flag (1 = use bill-to fields explicitly)'
+          description: '1 = use bill-to fields explicitly'
         },
         billToCity: {
           type: 'string',
@@ -235,7 +235,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
   },
   {
     name: 'autotask_get_company_site_configuration',
-    description: 'Get the site configuration record(s) for a company in Autotask. Site configurations contain tenant-defined fields used to track per-company configuration data. Call this first to discover which fields are available before calling autotask_update_company_site_configuration.',
+    description: 'Get company site configuration records. Call first to discover available fields.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -249,7 +249,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
   },
   {
     name: 'autotask_update_company_site_configuration',
-    description: 'Update fields on a company site configuration record. The set of available fields is tenant-defined, so callers should first call autotask_get_company_site_configuration to discover the available field names and current values for the company. Pass the site configuration record id (not the company id) along with an updates object containing the fields to change.',
+    description: 'Update company site configuration. Fields are tenant-defined; call get first.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -270,7 +270,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
   // Contact tools
   {
     name: 'autotask_search_contacts',
-    description: 'Search for contacts in Autotask. Returns 25 results per page by default. Use page parameter for more results.',
+    description: 'Search contacts by name, email, or company. Max 200/page.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -288,12 +288,12 @@ export const TOOL_DEFINITIONS: McpTool[] = [
         },
         page: {
           type: 'number',
-          description: 'Page number for pagination (default: 1)',
+          
           minimum: 1
         },
         pageSize: {
           type: 'number',
-          description: 'Results per page (default: 25, max: 200)',
+          description: 'Max 200',
           minimum: 1,
           maximum: 200
         }
@@ -303,7 +303,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
   },
   {
     name: 'autotask_create_contact',
-    description: 'Create a new contact in Autotask',
+    description: 'Create new contact record',
     inputSchema: {
       type: 'object',
       properties: {
@@ -313,23 +313,23 @@ export const TOOL_DEFINITIONS: McpTool[] = [
         },
         firstName: {
           type: 'string',
-          description: 'Contact first name'
+          
         },
         lastName: {
           type: 'string',
-          description: 'Contact last name'
+          
         },
         emailAddress: {
           type: 'string',
-          description: 'Contact email address'
+          
         },
         phone: {
           type: 'string',
-          description: 'Contact phone number'
+          
         },
         title: {
           type: 'string',
-          description: 'Contact job title'
+          
         }
       },
       required: ['companyID', 'firstName', 'lastName']
@@ -337,7 +337,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
   },
   {
     name: 'autotask_update_contact',
-    description: 'Update an existing contact in Autotask. Pass only the fields you want to change; all non-id fields are optional. Field names match the Autotask REST API exactly.',
+    description: 'Update contact record. Only provided fields are changed.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -347,11 +347,11 @@ export const TOOL_DEFINITIONS: McpTool[] = [
         },
         firstName: {
           type: 'string',
-          description: 'Contact first name'
+          
         },
         lastName: {
           type: 'string',
-          description: 'Contact last name'
+          
         },
         emailAddress: {
           type: 'string',
@@ -409,7 +409,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
   // Ticket tools
   {
     name: 'autotask_search_tickets',
-    description: 'Search for tickets in Autotask. Returns 25 results per page by default. Use page parameter for more results. Use get_ticket_details for full data on a specific ticket.',
+    description: 'Search tickets by company, queue, status, priority. Use autotask_get_ticket_details for full data. Max 500/page.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -451,12 +451,12 @@ export const TOOL_DEFINITIONS: McpTool[] = [
         },
         page: {
           type: 'number',
-          description: 'Page number for pagination (default: 1)',
+          
           minimum: 1
         },
         pageSize: {
           type: 'number',
-          description: 'Results per page (default: 25, max: 500)',
+          description: 'Max 500',
           minimum: 1,
           maximum: 500
         }
@@ -466,7 +466,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
   },
   {
     name: 'autotask_get_ticket_details',
-    description: 'Get detailed information for a specific ticket by ID. Use this for full ticket data when needed.',
+    description: 'Get full ticket details including notes, time entries, and custom fields.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -485,7 +485,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
   },
   {
     name: 'autotask_create_ticket',
-    description: 'Create a new ticket in Autotask',
+    description: 'Create new ticket record',
     inputSchema: {
       type: 'object',
       properties: {
@@ -495,19 +495,19 @@ export const TOOL_DEFINITIONS: McpTool[] = [
         },
         title: {
           type: 'string',
-          description: 'Ticket title'
+          
         },
         description: {
           type: 'string',
-          description: 'Ticket description'
+          
         },
         status: {
           type: 'number',
-          description: 'Ticket status ID'
+          
         },
         priority: {
           type: 'number',
-          description: 'Ticket priority ID'
+          
         },
         assignedResourceID: {
           type: 'number',
@@ -588,7 +588,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
   },
   {
     name: 'autotask_update_ticket',
-    description: 'Update an existing ticket in Autotask. Only fields provided will be changed.',
+    description: 'Update ticket record. Only provided fields are changed.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -598,11 +598,11 @@ export const TOOL_DEFINITIONS: McpTool[] = [
         },
         title: {
           type: 'string',
-          description: 'Ticket title'
+          
         },
         description: {
           type: 'string',
-          description: 'Ticket description'
+          
         },
         status: {
           type: 'number',
@@ -650,7 +650,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
   },
   {
     name: 'autotask_search_ticket_charges',
-    description: 'Search for charges on a specific ticket. Charges represent materials, costs, or expenses billed against a ticket. Providing ticketId is strongly recommended — unfiltered queries are expensive and capped at 10 results.',
+    description: 'Search ticket charges (materials, costs, expenses). Provide ticketId for best performance. Max 10 if unfiltered.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -670,7 +670,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
   },
   {
     name: 'autotask_create_ticket_charge',
-    description: 'Create a charge (material, cost, or expense) on a ticket. Used to bill clients for parts, travel, or other non-labor costs.',
+    description: 'Create charge on ticket for materials, costs, or expenses.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -882,7 +882,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
         },
         page: {
           type: 'number',
-          description: 'Page number for pagination (default: 1)',
+          
           minimum: 1
         },
         pageSize: {
@@ -1021,7 +1021,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
         },
         isActive: {
           type: 'boolean',
-          description: 'Filter by active status'
+          
         },
         resourceType: {
           type: 'number',
@@ -1029,12 +1029,12 @@ export const TOOL_DEFINITIONS: McpTool[] = [
         },
         page: {
           type: 'number',
-          description: 'Page number for pagination (default: 1)',
+          
           minimum: 1
         },
         pageSize: {
           type: 'number',
-          description: 'Results per page (default: 25, max: 500)',
+          description: 'Max 500',
           minimum: 1,
           maximum: 500
         }
@@ -1751,7 +1751,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
         },
         isActive: {
           type: 'boolean',
-          description: 'Filter by active status'
+          
         },
         pageSize: {
           type: 'number',
@@ -1791,7 +1791,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
         },
         isActive: {
           type: 'boolean',
-          description: 'Filter by active status'
+          
         },
         pageSize: {
           type: 'number',
@@ -1831,7 +1831,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
         },
         isActive: {
           type: 'boolean',
-          description: 'Filter by active status'
+          
         },
         pageSize: {
           type: 'number',
@@ -2041,7 +2041,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
         },
         isActive: {
           type: 'boolean',
-          description: 'Filter by active status'
+          
         },
         productID: {
           type: 'number',
@@ -2157,7 +2157,7 @@ export const TOOL_DEFINITIONS: McpTool[] = [
         },
         page: {
           type: 'number',
-          description: 'Page number for pagination (default: 1)',
+          
           minimum: 1
         },
         pageSize: {
@@ -2369,12 +2369,12 @@ export const TOOL_DEFINITIONS: McpTool[] = [
         },
         page: {
           type: 'number',
-          description: 'Page number for pagination (default: 1)',
+          
           minimum: 1
         },
         pageSize: {
           type: 'number',
-          description: 'Results per page (default: 25, max: 500)',
+          description: 'Max 500',
           minimum: 1,
           maximum: 500
         }
@@ -2426,12 +2426,12 @@ export const TOOL_DEFINITIONS: McpTool[] = [
         },
         page: {
           type: 'number',
-          description: 'Page number for pagination (default: 1)',
+          
           minimum: 1
         },
         pageSize: {
           type: 'number',
-          description: 'Results per page (default: 25, max: 500)',
+          description: 'Max 500',
           minimum: 1,
           maximum: 500
         }
@@ -2482,12 +2482,12 @@ export const TOOL_DEFINITIONS: McpTool[] = [
         },
         page: {
           type: 'number',
-          description: 'Page number for pagination (default: 1)',
+          
           minimum: 1
         },
         pageSize: {
           type: 'number',
-          description: 'Results per page (default: 25, max: 500)',
+          description: 'Max 500',
           minimum: 1,
           maximum: 500
         }
