@@ -17,6 +17,15 @@
 
 ### Fixed
 
+- **deploy:** clarified that the one-click DigitalOcean deploy needs **no**
+  GitHub Packages token. Unlike the other WYRE MCP servers, `autotask-mcp` has
+  no private `@wyre-technology/*` GitHub Packages dependency — its only WYRE
+  dependency is the `autotask-node` SDK, declared as a git dependency on the
+  **public** `wyre-technology/autotask-node` repo, which `npm install` resolves
+  anonymously. Added a README note so operators don't add an unnecessary build
+  variable. (No `.npmrc` is created, because the package is not on the GitHub
+  Packages npm registry.)
+
 - **Four `search*` tools advertised filter params they silently dropped** ([#104](https://github.com/wyre-technology/autotask-mcp/issues/104), [#105](https://github.com/wyre-technology/autotask-mcp/issues/105)). `searchContracts`, `searchConfigurationItems`, `searchInvoices`, and `searchTasks` all published `inputSchema` properties like `companyID`, `searchTerm`, `status`, `assignedResourceID` — every property described as "Filter by …" — but the service methods read only `options.filter` and `options.pageSize`. The advertised properties were accepted, logged at debug level, then discarded. Callers got the same MATCH_ALL page-1 slice regardless of what they passed.
   - Effect: typed search tools were useless for any non-trivial query. Workaround was `autotask_raw_request`, which defeats the purpose of having schema-typed tools and isn't discoverable by MCP clients reading the catalog.
   - Fix: each method now mirrors the `searchProjects` pattern that was already in place — translates schema-shaped args into `QueryFilter[]` entries, with the `options.filter` escape hatch preserved for advanced callers. Field-name mappings per Autotask REST entity:

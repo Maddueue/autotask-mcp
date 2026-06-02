@@ -23,6 +23,13 @@ If you run an MSP on Autotask and you're tired of the context-switching tax, thi
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/wyre-technology/autotask-mcp)
 
+> **Note — no GitHub Packages token required.** Unlike most WYRE MCP servers,
+> `autotask-mcp` does **not** depend on a private `@wyre-technology/*` package on
+> GitHub Packages. Its only WYRE dependency is the `autotask-node` SDK, declared
+> as a git dependency on the **public** `wyre-technology/autotask-node` repo, which
+> `npm install` resolves anonymously. The DigitalOcean one-click deploy therefore
+> works without any `NODE_AUTH_TOKEN`/`GITHUB_TOKEN` build variable.
+
 ## Quick Start
 
 **Claude Desktop** — download, open, done:
