@@ -1,10 +1,13 @@
 {
-  "name": "autotask-mcp",
+  "name": "@wyre-technology/autotask-mcp",
   "version": "2.18.0",
   "description": "MCP (Model Context Protocol) server for Kaseya Autotask PSA integration",
   "main": "dist/entry.js",
   "bin": {
     "autotask-mcp": "./dist/entry.js"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
   },
   "scripts": {
     "build": "tsc",

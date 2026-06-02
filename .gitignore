@@ -50,3 +50,6 @@ dev-debug.log
 *.mcpb
 .mcpb-staging/
 .claude/
+
+# Cloudflare Workers
+.wrangler/

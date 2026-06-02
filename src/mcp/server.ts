@@ -129,6 +129,31 @@ export class AutotaskMcpServer {
   }
 
   /**
+   * Build a fresh MCP `Server` for a single request, optionally bound to
+   * per-request gateway credentials.
+   *
+   * This is the reuse seam for non-Node transports (e.g. the Cloudflare
+   * Workers entrypoint in `worker.ts`), which cannot use the Node
+   * `http.createServer` HTTP path but still need the exact same handler
+   * wiring. When `credentials` carry a full username/secret/integrationCode
+   * triple, an isolated per-request service + handlers are created; otherwise
+   * the default (env-configured) handlers are used.
+   */
+  public createRequestServer(credentials?: GatewayCredentials): Server {
+    if (
+      credentials &&
+      credentials.username &&
+      credentials.secret &&
+      credentials.integrationCode
+    ) {
+      const { toolHandler, resourceHandler } =
+        this.buildPerRequestHandlers(credentials);
+      return this.createFreshServer(toolHandler, resourceHandler);
+    }
+    return this.createFreshServer();
+  }
+
+  /**
    * Set up all MCP request handlers
    */
   private setupHandlers(

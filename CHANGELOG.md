@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+### Changed
+
+- **Published to GitHub Packages.** The npm package is now scoped to `@wyre-technology/autotask-mcp` (GitHub Packages rejects unscoped names) and `@semantic-release/npm` `npmPublish` is enabled. The release workflow now configures an authenticated `.npmrc` for `npm.pkg.github.com` and grants `packages: write`. The unscoped `bin` command name (`autotask-mcp`), the `io.github.wyre-technology/autotask-mcp` MCP Registry identifier, and the GHCR image name are unchanged.
+
 ### Added
 
 - **`issueType` and `subIssueType` on `autotask_update_ticket`** ([#109](https://github.com/wyre-technology/autotask-mcp/issues/109)). Both fields are already accepted by the underlying payload builder (and have always been exposed on `autotask_create_ticket`), but the update tool's input schema didn't advertise them — so triage workflows couldn't change ticket issue classification on an existing ticket without falling back to `autotask_raw_request`. Added them as optional numeric picklist IDs with the same descriptions used on `autotask_create_ticket`. New tests in `tests/lazy-loading.test.ts` pin the schema shape and assert the handler forwards both fields to `updateTicket()`.
@@ -16,6 +20,15 @@
 - **Ticket history audit-trail tools** (`autotask_get_ticket_history`, `autotask_search_ticket_history`). Exposes the Autotask `/TicketHistory` entity (GET-only) so callers can answer "when did this ticket transition from status X to status Y", "who changed the priority", etc. `search` requires a `ticketId` (Autotask does not support unscoped history queries) and fails fast with a friendly error before any network round-trip if it's missing. Surfaced via the `tickets` category bundle.
 
 ### Fixed
+
+- **deploy:** clarified that the one-click DigitalOcean deploy needs **no**
+  GitHub Packages token. Unlike the other WYRE MCP servers, `autotask-mcp` has
+  no private `@wyre-technology/*` GitHub Packages dependency — its only WYRE
+  dependency is the `autotask-node` SDK, declared as a git dependency on the
+  **public** `wyre-technology/autotask-node` repo, which `npm install` resolves
+  anonymously. Added a README note so operators don't add an unnecessary build
+  variable. (No `.npmrc` is created, because the package is not on the GitHub
+  Packages npm registry.)
 
 - **Four `search*` tools advertised filter params they silently dropped** ([#104](https://github.com/wyre-technology/autotask-mcp/issues/104), [#105](https://github.com/wyre-technology/autotask-mcp/issues/105)). `searchContracts`, `searchConfigurationItems`, `searchInvoices`, and `searchTasks` all published `inputSchema` properties like `companyID`, `searchTerm`, `status`, `assignedResourceID` — every property described as "Filter by …" — but the service methods read only `options.filter` and `options.pageSize`. The advertised properties were accepted, logged at debug level, then discarded. Callers got the same MATCH_ALL page-1 slice regardless of what they passed.
   - Effect: typed search tools were useless for any non-trivial query. Workaround was `autotask_raw_request`, which defeats the purpose of having schema-typed tools and isn't discoverable by MCP clients reading the catalog.
