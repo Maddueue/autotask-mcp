@@ -21,6 +21,12 @@
 
 ### Fixed
 
+- **Per-instance `MappingService` for proper tenant isolation in gateway mode.** Aligns the `MappingService` lifecycle with the per-request `AutotaskToolHandler` introduced in the worker refactor so each request gets its own mapping cache scoped to the request's credentials.
+  - Removed `static initPromise` and `private constructor`. Replaced the static `getInstance()` factory with a per-call `MappingService.create(autotaskService, logger, options)` that constructs a fresh instance bound to the supplied `AutotaskService` and awaits its cache initialization. Concurrent inits on the same instance still coalesce via a new per-instance `initPromise`.
+  - `AutotaskToolHandler.getMappingService()` now calls `MappingService.create(...)`. Because `AutotaskToolHandler` is already constructed per-request in gateway mode (via `McpServer.buildPerRequestHandlers`, added in the worker refactor), each request now ends up with its own isolated `MappingService`.
+  - Gateway-mode `/mcp` now rejects requests missing any of `X-API-Key` / `X-API-Secret` / `X-Integration-Code` with HTTP 401 (JSON-RPC error `-32001`) instead of falling through to the env-configured `this.toolHandler`.
+  - 4 new regression tests in `tests/mapping.test.ts` under `tenant isolation`: independent instances per tenant, no cross-pollution under concurrent init, isolated cache-clear semantics, and a 10-tenant high-fan-out parallel-init each-sees-only-own-data assertion. The `should return the same instance on subsequent calls` test was inverted to `should return a DISTINCT instance on each call` to guard against re-introducing the previous singleton shape.
+
 - **deploy:** clarified that the one-click DigitalOcean deploy needs **no**
   GitHub Packages token. Unlike the other WYRE MCP servers, `autotask-mcp` has
   no private `@wyre-technology/*` GitHub Packages dependency — its only WYRE
