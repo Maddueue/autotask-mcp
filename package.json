@@ -42,12 +42,12 @@
   "license": "Apache-2.0",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "autotask-node": "github:wyre-technology/autotask-node#v2.2.1",
     "winston": "^3.11.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@anthropic-ai/mcpb": "^2.1.2",
+    "autotask-node": "github:wyre-technology/autotask-node#v2.2.1",
     "@eslint/js": "^10.0.1",
     "@semantic-release/changelog": "^6.0.3",
     "@semantic-release/git": "^10.0.1",
@@ -69,7 +69,7 @@
   },
   "overrides": {
     "@isaacs/brace-expansion": "^5.0.1",
-    "brace-expansion": "^2.0.1",
+    "brace-expansion": "^2.0.3",
     "diff": "^7.0.0",
     "lodash": "^4.18.1",
     "tar": "^7.0.0"
