@@ -59,6 +59,11 @@ COPY --from=builder /app/node_modules ./node_modules
 # Prune dev dependencies (avoids re-installing git deps which need build tools)
 RUN npm prune --omit=dev && npm cache clean --force
 
+# Remove the npm CLI from the production image — the runtime only needs `node`
+# (CMD is `node dist/index.js`), and npm's bundled dependencies regularly trip
+# vulnerability scanners. Done as root, before switching to the non-root user.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+
 # Create logs directory
 RUN mkdir -p /app/logs && chown -R autotask:autotask /app
 
