@@ -13,6 +13,12 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
+# Force HTTPS instead of SSH for git-based npm dependencies (autotask-node is
+# fetched via github: shorthand). ACR Tasks builds in an isolated environment
+# with no SSH keys, so the default ssh://git@github.com/ rewrite some git
+# configs apply would fail there.
+RUN git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
+
 # Install dependencies (--ignore-scripts prevents 'prepare' from running before source is copied)
 RUN npm ci --ignore-scripts
 
