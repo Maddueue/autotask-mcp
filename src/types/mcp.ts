@@ -1,6 +1,5 @@
 // MCP Protocol Type Definitions
 // Based on Model Context Protocol specification
-
 export interface McpServerConfig {
   name: string;
   version: string;
@@ -9,7 +8,6 @@ export interface McpServerConfig {
     integrationCode?: string;
     secret?: string;
     apiUrl?: string;
+    impersonationResourceId?: string;
   };
 }
-
- 

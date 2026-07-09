@@ -31,6 +31,7 @@ export interface EnvironmentConfig {
     secret?: string;
     integrationCode?: string;
     apiUrl?: string;
+    impersonationResourceId?: string;
   };
   server: {
     name: string;
@@ -63,6 +64,7 @@ export interface GatewayCredentials {
   secret: string | undefined;
   integrationCode: string | undefined;
   apiUrl: string | undefined;
+  impersonationResourceId: string | undefined;
 }
 
 /**
@@ -78,6 +80,7 @@ export function getCredentialsFromGateway(): GatewayCredentials {
     secret: process.env.X_API_SECRET || process.env.AUTOTASK_SECRET,
     integrationCode: process.env.X_INTEGRATION_CODE || process.env.AUTOTASK_INTEGRATION_CODE,
     apiUrl: process.env.X_API_URL || process.env.AUTOTASK_API_URL,
+    impersonationResourceId: process.env.X_IMPERSONATION_RESOURCE_ID || process.env.AUTOTASK_IMPERSONATION_RESOURCE_ID,
   };
 }
 
@@ -96,6 +99,7 @@ export function parseCredentialsFromHeaders(headers: Record<string, string | str
     secret: getHeader('x-api-secret'),
     integrationCode: getHeader('x-integration-code'),
     apiUrl: getHeader('x-api-url'),
+    impersonationResourceId: getHeader('x-impersonation-resource-id'),
   };
 }
 
@@ -116,14 +120,16 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
         secret: process.env.AUTOTASK_SECRET,
         integrationCode: process.env.AUTOTASK_INTEGRATION_CODE,
         apiUrl: process.env.AUTOTASK_API_URL,
+        impersonationResourceId: process.env.AUTOTASK_IMPERSONATION_RESOURCE_ID,
       };
 
   // Filter out undefined values to satisfy exactOptionalPropertyTypes
-  const autotaskConfig: { username?: string; secret?: string; integrationCode?: string; apiUrl?: string } = {};
+  const autotaskConfig: { username?: string; secret?: string; integrationCode?: string; apiUrl?: string; impersonationResourceId?: string } = {};
   if (creds.username) autotaskConfig.username = creds.username;
   if (creds.secret) autotaskConfig.secret = creds.secret;
   if (creds.integrationCode) autotaskConfig.integrationCode = creds.integrationCode;
   if (creds.apiUrl) autotaskConfig.apiUrl = creds.apiUrl;
+  if (creds.impersonationResourceId) autotaskConfig.impersonationResourceId = creds.impersonationResourceId;
 
   const transportType = (process.env.MCP_TRANSPORT as TransportType) || 'stdio';
   if (transportType !== 'stdio' && transportType !== 'http') {
@@ -164,7 +170,8 @@ export function mergeWithMcpConfig(envConfig: EnvironmentConfig, mcpArgs?: Recor
       username: mcpArgs?.autotask?.username || envConfig.autotask.username,
       secret: mcpArgs?.autotask?.secret || envConfig.autotask.secret,
       integrationCode: mcpArgs?.autotask?.integrationCode || envConfig.autotask.integrationCode,
-      apiUrl: mcpArgs?.autotask?.apiUrl || envConfig.autotask.apiUrl
+      apiUrl: mcpArgs?.autotask?.apiUrl || envConfig.autotask.apiUrl,
+      impersonationResourceId: mcpArgs?.autotask?.impersonationResourceId || envConfig.autotask.impersonationResourceId
     }
   };
 
