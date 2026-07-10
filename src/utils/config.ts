@@ -48,6 +48,7 @@ export interface EnvironmentConfig {
   };
   auth: {
     mode: AuthMode;
+    gatewaySharedSecret?: string;
   };
   lazyLoading?: boolean;
 }
@@ -152,7 +153,8 @@ export function loadEnvironmentConfig(): EnvironmentConfig {
       format: (process.env.LOG_FORMAT as 'json' | 'simple') || 'simple'
     },
     auth: {
-      mode: authMode
+      mode: authMode,
+      ...(process.env.GATEWAY_SHARED_SECRET ? { gatewaySharedSecret: process.env.GATEWAY_SHARED_SECRET } : {})
     },
     lazyLoading: process.env.LAZY_LOADING === 'true' || process.env.LAZY_LOADING === '1'
   };
@@ -323,6 +325,11 @@ When AUTH_MODE=gateway, credentials are injected by the MCP Gateway:
   X_API_KEY                - Autotask API username (from X-API-Key header)
   X_API_SECRET             - Autotask API secret (from X-API-Secret header)
   X_INTEGRATION_CODE       - Autotask integration code (from X-Integration-Code header)
+  GATEWAY_SHARED_SECRET     - Optional. If set, every POST /mcp request must carry a matching
+                              X-Gateway-Secret header (constant-time compare) before anything
+                              else runs. Intended to be injected by APIM from a Key Vault-backed
+                              named value -- rejects requests that bypass APIM and hit the
+                              Container App directly.
 
 === Common Options ===
   AUTOTASK_API_URL         - Autotask API base URL (auto-detected if not provided)

@@ -3,6 +3,7 @@
 // Supports both local (env-based) and gateway (header-based) credential modes
 
 import { createServer, IncomingMessage, ServerResponse, Server as HttpServer } from 'node:http';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -23,6 +24,20 @@ import { EnvironmentConfig, parseCredentialsFromHeaders, GatewayCredentials, get
 import { AutotaskResourceHandler } from '../handlers/resource.handler.js';
 import { AutotaskToolHandler } from '../handlers/tool.handler.js';
 import { registerPromptHandlers } from './prompts.js';
+
+/**
+ * Constant-time comparison of a request-supplied X-Gateway-Secret header
+ * against the configured shared secret. Both sides are SHA-256 hashed first
+ * so that (a) differing lengths never short-circuit the comparison and leak
+ * timing information, and (b) a missing/undefined header can't throw from
+ * timingSafeEqual's length check.
+ */
+function isValidGatewaySecret(headerValue: string | string[] | undefined, expected: string): boolean {
+  const provided = Array.isArray(headerValue) ? headerValue[0] : headerValue;
+  const providedHash = createHash('sha256').update(provided ?? '').digest();
+  const expectedHash = createHash('sha256').update(expected).digest();
+  return timingSafeEqual(providedHash, expectedHash);
+}
 
 export class AutotaskMcpServer {
   private server: Server;
@@ -267,6 +282,7 @@ export class AutotaskMcpServer {
     const port = this.envConfig?.transport?.port || 8080;
     const host = this.envConfig?.transport?.host || '0.0.0.0';
     const isGatewayMode = this.envConfig?.auth?.mode === 'gateway';
+    const gatewaySharedSecret = this.envConfig?.auth?.gatewaySharedSecret;
 
     this.httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
       const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
@@ -310,6 +326,22 @@ export class AutotaskMcpServer {
 
       // MCP endpoint — stateless: fresh server + transport per request
       if (url.pathname === '/mcp') {
+        // Defense-in-depth: if a shared secret is configured, require it on
+        // every /mcp request before anything else runs. APIM injects this
+        // header from a Key Vault-backed named value, so a request that
+        // reaches the Container App directly (bypassing APIM) without the
+        // header is rejected here -- independent of, and prior to, the
+        // per-request gateway credential check further down.
+        if (gatewaySharedSecret && !isValidGatewaySecret(req.headers['x-gateway-secret'], gatewaySharedSecret)) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            jsonrpc: '2.0',
+            error: { code: -32001, message: 'Unauthorized: invalid or missing gateway secret' },
+            id: null,
+          }));
+          return;
+        }
+
         // Only POST is supported in stateless mode
         if (req.method !== 'POST') {
           res.writeHead(405, { 'Content-Type': 'application/json' });
