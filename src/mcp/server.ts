@@ -20,9 +20,18 @@ import {
 import { AutotaskService } from '../services/autotask.service.js';
 import { Logger } from '../utils/logger.js';
 import { McpServerConfig } from '../types/mcp.js';
-import { EnvironmentConfig, parseCredentialsFromHeaders, GatewayCredentials, getServerVersion } from '../utils/config.js';
+import {
+  EnvironmentConfig,
+  parseCredentialsFromHeaders,
+  GatewayCredentials,
+  getServerVersion,
+  resolveAutotaskApiUrl,
+  resolveImpersonationResourceIdFromPrincipal,
+  getUserPrincipalFromHeaders,
+  getAccessChannelFromHeaders,
+} from '../utils/config.js';
 import { AutotaskResourceHandler } from '../handlers/resource.handler.js';
-import { AutotaskToolHandler } from '../handlers/tool.handler.js';
+import { AutotaskToolHandler, WriteGuardConfig } from '../handlers/tool.handler.js';
 import { registerPromptHandlers } from './prompts.js';
 
 /**
@@ -120,7 +129,7 @@ export class AutotaskMcpServer {
    * Build per-request service + handlers from gateway credentials.
    * Returns fully isolated instances that won't be affected by concurrent requests.
    */
-  private buildPerRequestHandlers(credentials: GatewayCredentials): {
+  private buildPerRequestHandlers(credentials: GatewayCredentials, writeGuard?: WriteGuardConfig): {
     toolHandler: AutotaskToolHandler;
     resourceHandler: AutotaskResourceHandler;
   } {
@@ -140,8 +149,46 @@ export class AutotaskMcpServer {
     const service = new AutotaskService(requestConfig, this.logger);
     return {
       resourceHandler: new AutotaskResourceHandler(service, this.logger),
-      toolHandler: new AutotaskToolHandler(service, this.logger, this.lazyLoading),
+      toolHandler: new AutotaskToolHandler(service, this.logger, this.lazyLoading, writeGuard),
     };
+  }
+
+  /**
+   * Create a fresh MCP server + Streamable HTTP transport for a single
+   * request and hand it the request/response pair. Extracted so both the
+   * synchronous (env mode) and asynchronous (gateway mode, after awaiting
+   * the Phase 7 impersonation lookup) code paths in startHttpTransport
+   * share the exact same dispatch logic.
+   */
+  private dispatchMcpRequest(
+    req: IncomingMessage,
+    res: ServerResponse,
+    perRequestToolHandler?: AutotaskToolHandler,
+    perRequestResourceHandler?: AutotaskResourceHandler,
+  ): void {
+    const server = this.createFreshServer(perRequestToolHandler, perRequestResourceHandler);
+    const transport = new StreamableHTTPServerTransport({
+      enableJsonResponse: true,
+    });
+
+    res.on('close', () => {
+      transport.close();
+      server.close();
+    });
+
+    server.connect(transport as unknown as Transport).then(() => {
+      transport.handleRequest(req, res);
+    }).catch((err) => {
+      this.logger.error('MCP transport error:', err);
+      if (!res.headersSent) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          jsonrpc: '2.0',
+          error: { code: -32603, message: 'Internal error' },
+          id: null,
+        }));
+      }
+    });
   }
 
   /**
@@ -294,7 +341,7 @@ export class AutotaskMcpServer {
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, DELETE');
       res.setHeader(
         'Access-Control-Allow-Headers',
-        'Content-Type, Accept, Authorization, Mcp-Session-Id, X-API-Key, X-API-Secret, X-Integration-Code, X-Impersonation-Resource-Id'
+        'Content-Type, Accept, Authorization, Mcp-Session-Id, X-API-Key, X-API-Secret, X-Integration-Code, X-Impersonation-Resource-Id, X-User-Principal'
       );
       res.setHeader('Access-Control-Max-Age', '86400');
 
@@ -357,14 +404,52 @@ export class AutotaskMcpServer {
         // injected credential headers. Each request gets its own isolated
         // AutotaskService so concurrent requests for different tenants
         // never interfere with each other.
-        let perRequestToolHandler: AutotaskToolHandler | undefined;
-        let perRequestResourceHandler: AutotaskResourceHandler | undefined;
         if (isGatewayMode) {
           const credentials = parseCredentialsFromHeaders(req.headers as Record<string, string | string[] | undefined>);
           if (credentials.username && credentials.secret && credentials.integrationCode) {
-            const handlers = this.buildPerRequestHandlers(credentials);
-            perRequestToolHandler = handlers.toolHandler;
-            perRequestResourceHandler = handlers.resourceHandler;
+            const channel = getAccessChannelFromHeaders(req.headers as Record<string, string | string[] | undefined>);
+
+            // Phase 7 impersonation auto-resolution, and the write gate that
+            // depends on it, only apply on the "employee" channel. On
+            // "automation" (Make.com etc.) requests run under the API-only
+            // user's own identity with no impersonation attempt and no gate.
+            const userPrincipal = channel !== 'employee' || credentials.impersonationResourceId
+              ? undefined
+              : getUserPrincipalFromHeaders(req.headers as Record<string, string | string[] | undefined>);
+
+            const impersonationLookup: Promise<boolean> = userPrincipal
+              ? resolveAutotaskApiUrl(credentials.username, credentials.apiUrl, this.logger)
+                  .then((apiUrl) =>
+                    resolveImpersonationResourceIdFromPrincipal(
+                      userPrincipal,
+                      apiUrl,
+                      {
+                        username: credentials.username as string,
+                        secret: credentials.secret as string,
+                        integrationCode: credentials.integrationCode as string,
+                      },
+                      this.logger
+                    )
+                  )
+                  .then((resolvedId) => {
+                    if (resolvedId) {
+                      credentials.impersonationResourceId = String(resolvedId);
+                      this.logger.info(`Resolved impersonation resource ID ${resolvedId} for principal "${userPrincipal}".`);
+                      return true;
+                    }
+                    this.logger.warn(`No Autotask resource matched principal "${userPrincipal}" -- write tool calls will be blocked.`);
+                    return false;
+                  })
+                  .catch((err) => {
+                    this.logger.error('Impersonation resource-ID lookup failed -- write tool calls will be blocked:', err);
+                    return false;
+                  })
+              : Promise.resolve(!!credentials.impersonationResourceId);
+
+            impersonationLookup.then((impersonationResolved) => {
+              const handlers = this.buildPerRequestHandlers(credentials, { channel, impersonationResolved });
+              this.dispatchMcpRequest(req, res, handlers.toolHandler, handlers.resourceHandler);
+            });
           } else {
             // Gateway mode REQUIRES per-request credentials. Falling through
             // to the env-configured `this.toolHandler` would serve the server
@@ -379,35 +464,13 @@ export class AutotaskMcpServer {
               },
               id: null,
             }));
-            return;
           }
+          return;
         }
 
-        // Stateless: create fresh server + transport for each request
-        const server = this.createFreshServer(perRequestToolHandler, perRequestResourceHandler);
-        const transport = new StreamableHTTPServerTransport({
-          enableJsonResponse: true,
-        });
-
-        res.on('close', () => {
-          transport.close();
-          server.close();
-        });
-
-        server.connect(transport as unknown as Transport).then(() => {
-          transport.handleRequest(req, res);
-        }).catch((err) => {
-          this.logger.error('MCP transport error:', err);
-          if (!res.headersSent) {
-            res.writeHead(500, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({
-              jsonrpc: '2.0',
-              error: { code: -32603, message: 'Internal error' },
-              id: null,
-            }));
-          }
-        });
-
+        // Non-gateway (env) mode: no per-request credentials, use the
+        // default env-configured handlers.
+        this.dispatchMcpRequest(req, res);
         return;
       }
 

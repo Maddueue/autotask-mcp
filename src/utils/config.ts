@@ -308,6 +308,160 @@ export async function resolveAutotaskApiUrl(
 }
 
 /**
+ * In-memory cache mapping an Autotask Resource's `userName` field
+ * (lowercased) to its numeric Resource ID. Populated by
+ * resolveImpersonationResourceIdFromPrincipal on a (rate-limited) full
+ * Resources query. Never persisted to disk -- lifetime == process lifetime.
+ *
+ * Phase 7: lets the gateway auto-resolve write-impersonation from the
+ * authenticated employee's Entra identity (UPN or email -- either works,
+ * since we only ever compare the local part before "@") without requiring
+ * every employee's own Autotask API credentials to be provisioned.
+ *
+ * Verified against the real tenant on 13.07.2026: for every real employee
+ * account, the local part of the primary Autotask `email` field matches
+ * `userName` exactly (case-insensitively) -- including employees whose
+ * `email` domain differs from the company's Autotask login convention
+ * (e.g. "name@cristie.partners" with userName "Name.Surname"). `email2`/
+ * `email3` must NOT be used for this comparison -- they may hold unrelated
+ * personal addresses. Matching is deliberately an *exact* comparison (not
+ * "starts with") so that suffixed service/API accounts sharing an
+ * employee's email (e.g. "Name.Surname_API") never match instead of the
+ * real account.
+ */
+const resourceIdCache = new Map<string, number>();
+let resourceIdCacheFetchedAt = 0;
+const RESOURCE_ID_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
+/**
+ * Reset the resource ID cache. Intended for tests only.
+ */
+export function _resetResourceIdCache(): void {
+  resourceIdCache.clear();
+  resourceIdCacheFetchedAt = 0;
+}
+
+/**
+ * Minimal Autotask API credential triple needed to query the Resources
+ * entity directly (bypasses the autotask-node SDK, same rationale as
+ * resolveAutotaskApiUrl: this can run ahead of full service construction).
+ */
+export interface ResourceLookupCredentials {
+  username: string;
+  secret: string;
+  integrationCode: string;
+}
+
+/**
+ * Refresh the resource ID cache from the Autotask REST API, unless it was
+ * refreshed within RESOURCE_ID_CACHE_TTL_MS. Fetches only active resources,
+ * since inactive/system accounts should never be impersonation targets.
+ */
+async function refreshResourceIdCacheIfStale(
+  apiUrl: string,
+  creds: ResourceLookupCredentials,
+  logger: ZoneResolverLogger,
+  fetchImpl: typeof fetch
+): Promise<void> {
+  const now = Date.now();
+  if (resourceIdCache.size > 0 && now - resourceIdCacheFetchedAt < RESOURCE_ID_CACHE_TTL_MS) {
+    return;
+  }
+
+  const response = await fetchImpl(`${apiUrl}/v1.0/Resources/query`, {
+    method: 'POST',
+    headers: {
+      ApiIntegrationCode: creds.integrationCode,
+      UserName: creds.username,
+      Secret: creds.secret,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      filter: [{ op: 'eq', field: 'isActive', value: true }],
+      includeFields: ['id', 'userName'],
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Resources query for impersonation cache failed: HTTP ${response.status}`);
+  }
+
+  const body: any = await response.json();
+  const items: any[] = Array.isArray(body?.items) ? body.items : [];
+
+  resourceIdCache.clear();
+  for (const item of items) {
+    if (typeof item?.userName === 'string' && item.userName.length > 0 && typeof item?.id === 'number') {
+      resourceIdCache.set(item.userName.toLowerCase(), item.id);
+    }
+  }
+  resourceIdCacheFetchedAt = now;
+  logger.info(`Refreshed impersonation resource-ID cache: ${resourceIdCache.size} active resources.`);
+}
+
+/**
+ * Resolve an Autotask Resource ID for write-impersonation from an
+ * authenticated employee's Entra identity claim (UPN or email -- both work,
+ * see cache doc comment above for why). Returns undefined (not a throw) if
+ * no match is found, so the caller can fail open and proceed without
+ * impersonation rather than rejecting the request outright.
+ */
+export async function resolveImpersonationResourceIdFromPrincipal(
+  userPrincipal: string,
+  apiUrl: string,
+  creds: ResourceLookupCredentials,
+  logger: ZoneResolverLogger,
+  fetchImpl: typeof fetch = fetch
+): Promise<number | undefined> {
+  const localPart = userPrincipal.split('@')[0]?.toLowerCase();
+  if (!localPart) {
+    return undefined;
+  }
+
+  await refreshResourceIdCacheIfStale(apiUrl, creds, logger, fetchImpl);
+  return resourceIdCache.get(localPart);
+}
+
+/**
+ * Extract the caller's identity claim from request headers. APIM forwards
+ * this as X-User-Principal, populated from the validated Entra token's
+ * "upn" claim (added as an optional access-token claim on the app
+ * registration). Used only to look up a Phase 7 impersonation target --
+ * never used as a credential itself.
+ */
+export function getUserPrincipalFromHeaders(headers: Record<string, string | string[] | undefined>): string | undefined {
+  const value = headers['x-user-principal'] || headers['X-User-Principal'];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+/**
+ * Which access path a gateway request came through, set by APIM as a static
+ * X-Access-Channel header per API/product:
+ *   - "employee": the Entra-authenticated, per-employee API. Write tool
+ *     calls are gated on a resolved Phase 7 impersonation match (see
+ *     WriteGuardConfig in tool.handler.ts).
+ *   - "automation": a separate, subscription-key-secured API intended for
+ *     administratively managed integrations (e.g. Make.com scenarios). No
+ *     employee identity, no impersonation auto-resolution attempt, and no
+ *     write gate -- these run under the API-only user's own identity,
+ *     exactly like any other direct Autotask API integration.
+ */
+export type AccessChannel = 'employee' | 'automation';
+
+/**
+ * Determine the access channel for this request from the X-Access-Channel
+ * header. Defaults to the more restrictive "employee" behavior if the
+ * header is missing or holds an unrecognized value, so a misconfigured or
+ * bypassed APIM policy fails closed (gated) rather than silently granting
+ * unrestricted automation-level access.
+ */
+export function getAccessChannelFromHeaders(headers: Record<string, string | string[] | undefined>): AccessChannel {
+  const value = headers['x-access-channel'] || headers['X-Access-Channel'];
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw === 'automation' ? 'automation' : 'employee';
+}
+
+/**
  * Get configuration help text
  */
 export function getConfigHelp(): string {
@@ -330,6 +484,21 @@ When AUTH_MODE=gateway, credentials are injected by the MCP Gateway:
                               else runs. Intended to be injected by APIM from a Key Vault-backed
                               named value -- rejects requests that bypass APIM and hit the
                               Container App directly.
+  X-User-Principal (header) - Optional, not an env var. If present and X-Impersonation-Resource-Id
+                              is not explicitly set, the server resolves this header's local part
+                              (before "@") against Autotask's Resources.userName field
+                              (case-insensitive exact match) and uses the match, if any, as the
+                              impersonation target for this request. Intended to be injected by
+                              APIM from the validated Entra token's "upn" claim. No match -> the
+                              request proceeds without impersonation (fails open).
+  X-Access-Channel (header) - Optional, not an env var. "employee" (default if missing/unrecognized)
+                              or "automation". On "employee", write tool calls (create/update/delete,
+                              or autotask_raw_request with a non-GET method) are rejected unless a
+                              Phase 7 impersonation match was resolved (or X-Impersonation-Resource-Id
+                              was explicitly set). On "automation", no impersonation is attempted and
+                              no write gate applies -- intended for administratively managed
+                              integrations (e.g. Make.com), secured separately (e.g. an APIM
+                              subscription key) rather than by employee login.
 
 === Common Options ===
   AUTOTASK_API_URL         - Autotask API base URL (auto-detected if not provided)

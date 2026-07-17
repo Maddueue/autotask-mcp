@@ -81,6 +81,41 @@ export interface McpToolResult {
   isError?: boolean;
 }
 
+/**
+ * Phase 7 write gate configuration, built per-request in gateway mode (see
+ * AutotaskMcpServer.buildPerRequestHandlers). Undefined in env/local mode
+ * and on the "automation" access channel -- no gate applies in either case.
+ */
+export interface WriteGuardConfig {
+  channel: 'employee' | 'automation';
+  impersonationResolved: boolean;
+}
+
+/**
+ * True if calling `name` with `args` would mutate Autotask data (create,
+ * update, or delete), used to decide whether the Phase 7 write gate applies.
+ *
+ * Two tools need special handling instead of a simple name check:
+ *   - autotask_raw_request: an escape hatch with a caller-supplied HTTP
+ *     method (args.method). Classified by that method, not by the tool name.
+ *   - autotask_execute_tool: the lazy-loading meta-tool that dispatches to
+ *     another tool by name (args.toolName). Classified recursively by the
+ *     actual target tool, otherwise every write in lazy-loading mode would
+ *     bypass the gate entirely.
+ */
+function isWriteToolCall(name: string, args: Record<string, any>): boolean {
+  if (name === 'autotask_execute_tool') {
+    const innerName = args?.toolName;
+    if (typeof innerName !== 'string') return false;
+    return isWriteToolCall(innerName, args?.arguments || {});
+  }
+  if (name === 'autotask_raw_request') {
+    const method = String(args?.method || 'GET').toUpperCase();
+    return method !== 'GET';
+  }
+  return /^autotask_(create|update|delete)_/.test(name);
+}
+
 export class AutotaskToolHandler {
   protected autotaskService: AutotaskService;
   protected logger: Logger;
@@ -89,11 +124,13 @@ export class AutotaskToolHandler {
   private mappingService: MappingService | null = null;
   private lazyLoading: boolean;
   private enhanceConcurrency: number;
+  private writeGuard: WriteGuardConfig | undefined;
 
-  constructor(autotaskService: AutotaskService, logger: Logger, lazyLoading = false) {
+  constructor(autotaskService: AutotaskService, logger: Logger, lazyLoading = false, writeGuard?: WriteGuardConfig) {
     this.autotaskService = autotaskService;
     this.logger = logger;
     this.lazyLoading = lazyLoading;
+    this.writeGuard = writeGuard;
     this.enhanceConcurrency = resolveEnhanceConcurrency(process.env.AUTOTASK_ENHANCE_CONCURRENCY);
     this.picklistCache = new PicklistCache(
       logger,
@@ -1476,6 +1513,15 @@ export class AutotaskToolHandler {
    */
   async callTool(name: string, args: Record<string, any>): Promise<McpToolResult> {
     this.logger.debug(`Calling tool: ${name}`, args);
+
+    if (this.writeGuard?.channel === 'employee' && !this.writeGuard.impersonationResolved && isWriteToolCall(name, args)) {
+      this.logger.warn(`Blocked write tool call "${name}": no Autotask account resolved for the authenticated employee.`);
+      return errorToolResult({
+        error: 'Write operations require an Autotask account for the authenticated employee. No matching Autotask resource was found for your identity, so this write was blocked.',
+        error_type: 'impersonation_required',
+        tool: name,
+      });
+    }
 
     try {
       const handler = this.getDispatchTable().get(name);
